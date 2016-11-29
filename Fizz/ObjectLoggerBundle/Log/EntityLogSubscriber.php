@@ -5,6 +5,7 @@ namespace Fizz\ObjectLoggerBundle\Log;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\EventSubscriber;
 use Doctrine\ORM\Event\LifecycleEventArgs;
+use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PreUpdateEventArgs;
 use Fizz\ObjectLoggerBundle\Entity\EntityLog;
@@ -25,6 +26,11 @@ class EntityLogSubscriber implements EventSubscriber
      * @var EntityLogProcessorInterface[] $processors
      */
     private $processors;
+
+    /**
+     * @var array $entityLogs
+     */
+    private $entityLogs = array();
 
 
     /**
@@ -97,22 +103,50 @@ class EntityLogSubscriber implements EventSubscriber
     }
 
     /**
+     * OnFlush.
+     *
+     * @param OnFlushEventArgs $args
+     */
+    public function onFlush(OnFlushEventArgs $args)
+    {
+        if(count($this->entityLogs)) {
+            $this->entityLogs = array();
+        } else {
+            $scheduledInsertions = $args->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions();
+            foreach ($scheduledInsertions as $oid => $insertion) {
+                if ($insertion instanceof EntityLog) {
+                    $args->getEntityManager()->remove($insertion);
+                    $this->entityLogs[] = $insertion;
+                }
+            }
+        }
+    }
+
+    /**
      * PostFlush.
      *
      * @param PostFlushEventArgs $args
      */
     public function postFlush(PostFlushEventArgs $args)
     {
-        $scheduledInsertions = $args->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions();
-        if(!count($scheduledInsertions)) {
+        if(!count($this->entityLogs)) {
             return;
         }
-        do {
-            $checkedEntity = array_shift($scheduledInsertions);
-        } while($checkedEntity instanceof EntityLog);
-        if(!count($scheduledInsertions)) {
-            $args->getEntityManager()->flush();
+        // This ugly bit allows us to skip one doctrine transaction and start
+        // a separate one just for the logs in the previous one.
+        foreach($this->entityLogs as $entityLog) {
+            $copy = new EntityLog();
+            $copy
+                ->setObjectClass($entityLog->getObjectClass())
+                ->setObjectIdentifier($entityLog->getObjectIdentifier())
+                ->setExtra($entityLog->getExtra())
+                ->setIsTranslated($entityLog->getIsTranslated())
+                ->setMessage($entityLog->getMessage())
+                ->setTranslationDomain($entityLog->getTranslationDomain())
+                ->setTranslationParameters($entityLog->getTranslationParameters());
+            $args->getEntityManager()->persist($copy);
         }
+        $args->getEntityManager()->flush();
     }
 
     /**
@@ -124,6 +158,7 @@ class EntityLogSubscriber implements EventSubscriber
             'prePersist',
             'preUpdate',
             'preRemove',
+            'onFlush',
             'postFlush',
         );
     }

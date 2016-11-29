@@ -103,9 +103,14 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
         $class = get_class($object);
         if(isset($this->discriminatorMapping[$class])) {
             foreach($this->discriminatorMapping[$class] as $field) {
-                $reflection = (new \ReflectionClass($object))->getProperty($field);
-                $reflection->setAccessible(true);
-                $object = $reflection->getValue($object);
+                $reflection = (new \ReflectionClass($object));
+                if($reflection->hasProperty($field)) {
+                    $reflection->setAccessible(true);
+                    $object = $reflection->getValue($object);
+                } else {
+                    $getter = 'get' . ucfirst($field);
+                    return $object->$getter();
+                }
             }
         }
         if(!is_object($object)) {
