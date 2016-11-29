@@ -113,7 +113,7 @@ class EntityLogSubscriber implements EventSubscriber
             $this->entityLogs = array();
         } else {
             $scheduledInsertions = $args->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions();
-            foreach ($scheduledInsertions as $oid => $insertion) {
+            foreach ($scheduledInsertions as $insertion) {
                 if ($insertion instanceof EntityLog) {
                     $args->getEntityManager()->remove($insertion);
                     $this->entityLogs[] = $insertion;
@@ -129,6 +129,13 @@ class EntityLogSubscriber implements EventSubscriber
      */
     public function postFlush(PostFlushEventArgs $args)
     {
+        $scheduledInsertions = $args->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions();
+        foreach ($scheduledInsertions as $insertion) {
+            if ($insertion instanceof EntityLog) {
+                $args->getEntityManager()->remove($insertion);
+                $this->entityLogs[] = $insertion;
+            }
+        }
         if(!count($this->entityLogs)) {
             return;
         }
