@@ -1,0 +1,45 @@
+parameters:
+    fizz.object_logger.entity_log_subscriber.class: Fizz\ObjectLoggerBundle\Log\EntityLogSubscriber
+    fizz.object_logger.processor_collection.class: Doctrine\Common\Collections\ArrayCollection
+    fizz.object_logger.processor.default.class: Fizz\ObjectLoggerBundle\Log\Processor\DefaultEntityLogProcessor
+    fizz.object_logger.processor.event_listener.user_extra.class: Fizz\ObjectLoggerBundle\Log\Processor\EventListener\UserExtraListener
+
+    # If you override this parameter, you can change the way log messages render in twig.
+
+    fizz.object_logger.twig.object_logger_extension.class: Fizz\ObjectLoggerBundle\Twig\ObjectLoggerExtension
+
+services:
+    fizz.object_logger.entity_log_subscriber:
+        class: '%fizz.object_logger.entity_log_subscriber.class%'
+        arguments: [ '@fizz.object_logger.processor_collection' ]
+        tags:
+            - { name: doctrine.event_subscriber, connection: default }
+
+    # Collection contains all processors we have registered.
+
+    fizz.object_logger.processor_collection:
+        class: '%fizz.object_logger.processor_collection.class%'
+
+    fizz.object_logger.processor.default:
+        class: '%fizz.object_logger.processor.default.class%'
+        arguments:
+            - '%fizz.object_logger.ignored_fields%'
+            - '%fizz.object_logger.enabled_entities%'
+            - '%fizz.object_logger.discriminator_mapping%'
+        calls:
+            - [setContainer, [ '@service_container' ]]
+        tags:
+            - { name: 'fizz.object_logger.processor' }
+
+    fizz.object_logger.processor.event_listener.user_extra:
+        class: '%fizz.object_logger.processor.event_listener.user_extra.class%'
+        arguments: [ '@security.token_storage' ]
+        tags:
+            - { name: kernel.event_listener, event: fizz.object_logger.extra, method: onExtra }
+
+    fizz.object_logger.twig.object_logger_extension:
+        class: '%fizz.object_logger.twig.object_logger_extension.class%'
+        arguments: [ '@translator' ]
+        public: false
+        tags:
+            - { name: twig.extension }
