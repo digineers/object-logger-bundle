@@ -135,8 +135,7 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
             return;
         }
         $referredObject = $this->getReferredObject($model);
-        $referredObjectClass = get_class($referredObject);
-        $referredObjectMetadata = $this->em->getClassMetadata($referredObjectClass);
+        $referredObjectMetadata = $this->em->getClassMetadata(get_class($referredObject));
         if($referredObjectMetadata->isIdentifierComposite) {
             throw new \RuntimeException('FizzObjectLogger does not support composite identifiers for referred objects.');
         }
@@ -146,7 +145,7 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
             ->setMessage($this->translationKey($model))
             ->setIsTranslated(true)
             ->setTranslationDomain('FizzObjectLoggerBundle')
-            ->setObjectClass($referredObjectClass)
+            ->setObjectClass($referredObjectMetadata->getName())
             ->setObjectIdentifier(current($referredObjectMetadata->getIdentifierValues($referredObject)))
             ->setExtra($event->getExtra());
 
@@ -159,8 +158,7 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
     public function insert(ObjectLogModel $model)
     {
         $referredObject = $this->getReferredObject($model);
-        $referredObjectClass = get_class($referredObject);
-        $referredObjectMetadata = $this->em->getClassMetadata($referredObjectClass);
+        $referredObjectMetadata = $this->em->getClassMetadata(get_class($referredObject));
         if($referredObjectMetadata->isIdentifierComposite) {
             throw new \RuntimeException('FizzObjectLogger does not support composite identifiers for referred objects.');
         }
@@ -170,7 +168,7 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
             ->setMessage($this->translationKey($model))
             ->setIsTranslated(true)
             ->setTranslationDomain('FizzObjectLoggerBundle')
-            ->setObjectClass($referredObjectClass)
+            ->setObjectClass($referredObjectMetadata->getName())
             ->setObjectIdentifier(current($referredObjectMetadata->getIdentifierValues($referredObject)))
             ->setExtra($event->getExtra());
 
@@ -183,8 +181,8 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
     public function remove(ObjectLogModel $model)
     {
         $referredObject = $this->getReferredObject($model);
-        $referredObjectClass = get_class($referredObject);
-        $referredObjectMetadata = $this->em->getClassMetadata($referredObjectClass);
+        $this->em->initializeObject($referredObject);
+        $referredObjectMetadata = $this->em->getClassMetadata(get_class($referredObject));
         if($referredObjectMetadata->isIdentifierComposite) {
             throw new \RuntimeException('FizzObjectLogger does not support composite identifiers for referred objects.');
         }
@@ -194,7 +192,7 @@ class DefaultEntityLogProcessor extends AbstractDelegatingEntityLogProcessor
             ->setMessage($this->translationKey($model))
             ->setIsTranslated(true)
             ->setTranslationDomain('FizzObjectLoggerBundle')
-            ->setObjectClass($referredObjectClass)
+            ->setObjectClass($referredObjectMetadata->getName())
             ->setObjectIdentifier(current($referredObjectMetadata->getIdentifierValues($referredObject)))
             ->setExtra($event->getExtra());
 
