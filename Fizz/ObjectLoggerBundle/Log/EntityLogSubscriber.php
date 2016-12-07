@@ -27,11 +27,6 @@ class EntityLogSubscriber implements EventSubscriber
      */
     private $processors;
 
-    /**
-     * @var array $entityLogs
-     */
-    private $entityLogs = array();
-
 
     /**
      * Constructor.
@@ -44,116 +39,56 @@ class EntityLogSubscriber implements EventSubscriber
     }
 
     /**
-     * PrePersist.
-     *
-     * @param LifecycleEventArgs $args
-     */
-    public function prePersist(LifecycleEventArgs $args)
-    {
-        $model = new ObjectLogModel($args->getObject(), 'insert');
-        foreach($this->processors as $processor) {
-            if($processor->supports($model)) {
-                $processor->process($model);
-            }
-        }
-    }
-
-    /**
-     * PreUpdate.
-     *
-     * @param PreUpdateEventArgs $args
-     */
-    public function preUpdate(PreUpdateEventArgs $args)
-    {
-        $changedFields = array();
-        $object = $args->getObject();
-        // We are sure the object manager is an EntityManager, because we only support these for now.
-        $om = $args->getObjectManager();
-        $md = $om->getClassMetadata(get_class($object));
-        foreach($md->getFieldNames() as $field) {
-            if($args->hasChangedField($field)) {
-                $changedFields[$field] = array(
-                    'old' => $args->getOldValue($field),
-                    'new' => $args->getNewValue($field),
-                );
-            }
-        }
-
-        $model = new ObjectLogUpdateModel($args->getObject(), 'update', $changedFields);
-        foreach($this->processors as $processor) {
-            if($processor->supports($model)) {
-                $processor->process($model);
-            }
-        }
-    }
-
-    /**
-     * PreRemove.
-     *
-     * @param LifecycleEventArgs $args
-     */
-    public function preRemove(LifecycleEventArgs $args)
-    {
-        $model = new ObjectLogModel($args->getObject(), 'remove');
-        foreach($this->processors as $processor) {
-            if($processor->supports($model)) {
-                $processor->process($model);
-            }
-        }
-    }
-
-    /**
      * OnFlush.
      *
      * @param OnFlushEventArgs $args
      */
     public function onFlush(OnFlushEventArgs $args)
     {
-        if(count($this->entityLogs)) {
-            $this->entityLogs = array();
-        } else {
-            $scheduledInsertions = $args->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions();
-            foreach ($scheduledInsertions as $insertion) {
-                if ($insertion instanceof EntityLog) {
-                    $args->getEntityManager()->remove($insertion);
-                    $this->entityLogs[] = $insertion;
+        $em = $args->getEntityManager();
+        $uow = $em->getUnitOfWork();
+        foreach($uow->getScheduledEntityInsertions() as $insertion) {
+            $model = new ObjectLogModel($insertion, 'insert');
+            foreach($this->processors as $processor) {
+                if($processor->supports($model)) {
+                    $processor->process($model);
                 }
             }
         }
-    }
 
-    /**
-     * PostFlush.
-     *
-     * @param PostFlushEventArgs $args
-     */
-    public function postFlush(PostFlushEventArgs $args)
-    {
-        $scheduledInsertions = $args->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions();
-        foreach ($scheduledInsertions as $insertion) {
-            if ($insertion instanceof EntityLog) {
-                $args->getEntityManager()->remove($insertion);
-                $this->entityLogs[] = $insertion;
+        foreach($uow->getScheduledEntityUpdates() as $update) {
+            $changedFields = array();
+            $originalData = $uow->getOriginalEntityData($update);
+            foreach($uow->getEntityChangeSet($update) as $field => $value) {
+                if(is_array($value) && array_key_exists(0, $value) && array_key_exists(1, $value) && '' === $value[0] && null === $value[1] && $value[1] === $originalData[$field]) {
+                    continue;
+                }
+                $changedFields[$field] = array(
+                    'old' => $originalData[$field],
+                    'new' => $value,
+                );
+            }
+            if(!count($changedFields)) {
+                continue;
+            }
+            $model = new ObjectLogUpdateModel($update, 'update', $changedFields);
+            foreach($this->processors as $processor) {
+                if($processor->supports($model)) {
+                    $processor->process($model);
+                }
             }
         }
-        if(!count($this->entityLogs)) {
-            return;
+
+        foreach($uow->getScheduledEntityDeletions() as $deletion) {
+            $model = new ObjectLogModel($deletion, 'remove');
+            foreach($this->processors as $processor) {
+                if($processor->supports($model)) {
+                    $processor->process($model);
+                }
+            }
         }
-        // This ugly bit allows us to skip one doctrine transaction and start
-        // a separate one just for the logs in the previous one.
-        foreach($this->entityLogs as $entityLog) {
-            $copy = new EntityLog();
-            $copy
-                ->setObjectClass($entityLog->getObjectClass())
-                ->setObjectIdentifier($entityLog->getObjectIdentifier())
-                ->setExtra($entityLog->getExtra())
-                ->setIsTranslated($entityLog->getIsTranslated())
-                ->setMessage($entityLog->getMessage())
-                ->setTranslationDomain($entityLog->getTranslationDomain())
-                ->setTranslationParameters($entityLog->getTranslationParameters());
-            $args->getEntityManager()->persist($copy);
-        }
-        $args->getEntityManager()->flush();
+
+        $uow->computeChangeSets();
     }
 
     /**
@@ -162,11 +97,7 @@ class EntityLogSubscriber implements EventSubscriber
     public function getSubscribedEvents()
     {
         return array(
-            'prePersist',
-            'preUpdate',
-            'preRemove',
             'onFlush',
-            'postFlush',
         );
     }
 
